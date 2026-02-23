@@ -1,0 +1,27 @@
+seed: 42
+device: cpu
+
+model:
+  num_classes: 20
+  in_channel: 32
+  hidden_gcn: 64
+  feat_dim: 64
+  num_heads: 5
+
+data:
+  batch_size: 4
+  steps_eval: 1
+
+alg1:
+  topk_circuits: 4
+
+alg2:
+  eps: 0.10
+  step_size: 0.05
+  steps: 2
+  circuit_aware_lambda: 0.30
+  circuit_aware_mode: attn_kl
+
+report:
+  out_dir: outputs
+  tag: toy_gatn_min

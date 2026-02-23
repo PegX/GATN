@@ -1,0 +1,1 @@
+"""AViC@GATN minimal prototype."""

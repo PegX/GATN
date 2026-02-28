@@ -1,0 +1,41 @@
+task:
+  name: gatn_real
+  gatn_repo_root: /home/pengxu/Projects/information_security/GATN   # 真实 repo 路径
+  checkpoint_path: /home/pengxu/Projects/information_security/GATN/avic_gatn_min/checkpoints/model_best_96.3178.pth.tar
+  
+  # 以及 GATN 原 repo test 所需的参数（batch_size, num_classes, embedding, A1/A2 等）
+
+
+device: cpu
+
+gatn:
+  repo_root: /home/pengxu/Projects/information_security/GATN/
+  dataset_root: /home/pengxu/Projects/information_security/GATN/dataset
+  phase: val
+  batch_size: 16
+  workers: 4
+
+  # 关键：embedding 是 COCO2014(... inp_name=embedding) 用的 :contentReference[oaicite:4]{index=4}
+  embedding: /path/to/your_embedding.pkl
+  embedding_length: 300
+
+  # 先给占位（因为 adapter 读取它，但真实 models.py 不用它）
+  adj_file: dummy.pkl
+
+  t1: 0.2
+  num_classes: 80
+
+  # 下面这些需要按你真实 repo 的模型构造参数填
+  model_kwargs:
+    num_classes: 80
+    # ...
+
+  data_kwargs:
+    split: test
+    root: /path/to/test_data_or_features
+
+  batch_size: 16
+  num_workers: 4
+  num_layers: 4
+  num_heads: 4
+  attn_names: ["attn1", "attn2"]   # 如果真实GATN只有一个，就写 ["attn"]: 3

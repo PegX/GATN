@@ -10,6 +10,7 @@ import torch
 from avic_gatn.algorithms.alg1_circuit_discovery import discover_vulnerability_circuits
 from avic_gatn.algorithms.alg2_circuit_aware_attack import pgd_attack_node_features
 from avic_gatn.tasks.toy_task import ToyGATNTaskAdapter
+from avic_gatn.tasks.gatn_task.adapter import RealGATNTaskAdapter
 
 
 def run_end2end(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -17,9 +18,15 @@ def run_end2end(cfg: Dict[str, Any]) -> Dict[str, Any]:
     torch.manual_seed(seed)
 
     device = torch.device(cfg.get("device", "cpu"))
+    task = cfg["task"]["name"]
+    if task == "gatn_real":
+        adapter = RealGATNTaskAdapter(cfg=cfg, device=device) 
+        adapter.setup()
+    elif task == "toy":
+        adapter = ToyGATNTaskAdapter(cfg=cfg, device=device)
 
-    adapter = ToyGATNTaskAdapter(cfg=cfg, device=device)
-    adapter.setup()
+    #adapter = ToyGATNTaskAdapter(cfg=cfg, device=device)
+        adapter.setup()
 
     steps_eval = int(cfg["data"]["steps_eval"])
 

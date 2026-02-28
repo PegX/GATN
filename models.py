@@ -85,7 +85,8 @@ class GATNResnet(nn.Module):
         A_Tensor1 = s_adj1.unsqueeze(-1)
 
 
-        self.transformerblock = AttentionBlock(num_classes)# TransformerBlock()
+        #self.transformerblock = AttentionBlock(num_classes)# TransformerBlock()
+        self.transformerblock = AttentionBlock(num_classes, layer_idx=0)
 
         self.linear_A = nn.Linear(80, 80)
         self.A_1 = A_Tensor.permute(2,0,1)
@@ -105,10 +106,15 @@ class GATNResnet(nn.Module):
         
         inp = inp[0]
         # print("self.A_1",self.A_1.shape)
-        adj, _ = self.transformerblock(self.A_1.cuda(), self.A_2.cuda())
+        #adj, _ = self.transformerblock(self.A_1.cuda(), self.A_2.cuda())
+        A1 = self.A_1.to(feature.device)
+        A2 = self.A_2.to(feature.device)
+        adj, _ = self.transformerblock(A1, A2)
         # adj = self.A_1.cuda()
         # print("adj_shape",adj.shape)
-        adj = torch.squeeze(adj, 0) + torch.eye(self.num_classes).type(torch.FloatTensor).cuda()
+        #adj = torch.squeeze(adj, 0) + torch.eye(self.num_classes).type(torch.FloatTensor).cuda()
+        adj = torch.squeeze(adj, 0)
+        adj = adj + torch.eye(self.num_classes, device=adj.device, dtype=adj.dtype)
         adj = gen_adj(adj)
 
         x = self.gc1(inp, adj)

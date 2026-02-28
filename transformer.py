@@ -62,6 +62,7 @@ class Attention(nn.Module):
         self.proj_dropout = Dropout(0.0)
 
         self.softmax = Softmax(dim=-1)
+        
 
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size) #(8 257) + (16 80)
@@ -80,10 +81,29 @@ class Attention(nn.Module):
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2)) # Q X KT
         attention_scores = attention_scores / math.sqrt(self.attention_head_size) # /sqrt(d) norm
         attention_probs = self.softmax(attention_scores) # softmax
+
+
+
+        # ---------------- AViC hook #1: patch/cache attention weights ----------------
+        ctrl = getattr(self, "_avic_controller", None)
+        if ctrl is not None:
+            layer_idx = getattr(self, "_avic_layer_idx", -1)
+            attn_name = getattr(self, "_avic_attn_name", "attn")
+            attention_probs = ctrl.apply_on_attn(attention_probs, layer_idx, attn_name)
+        # ---------------------------------------------------------------------------
+
         weights = attention_probs if self.vis else None
         attention_probs = self.attn_dropout(attention_probs)
 
         context_layer = torch.matmul(attention_probs, value_layer) # W X V
+
+        # ---------------- AViC hook #2: patch/cache per-head messages --------------
+        if ctrl is not None:
+            layer_idx = getattr(self, "_avic_layer_idx", -1)
+            attn_name = getattr(self, "_avic_attn_name", "attn")
+            context_layer = ctrl.apply_on_head_out(context_layer, layer_idx, attn_name)
+        # ---------------------------------------------------------------------------
+
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
@@ -92,13 +112,23 @@ class Attention(nn.Module):
         return attention_output, weights
 
 class AttentionBlock(nn.Module):
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, layer_idx: int = 0):
         super(AttentionBlock, self).__init__()
         self.hidden_size = hidden_size
+        self.layer_idx = layer_idx
+
         self.attention_norm1 = LayerNorm(self.hidden_size, eps=1e-6)
         # self.attention_norm2 = LayerNorm(self.hidden_size, eps=1e-6)
         self.attn1 = Attention(hidden_size)
         self.attn2 = Attention(hidden_size)
+
+
+        # --- AViC annotations (used by CircuitController) ---
+        self.attn1._avic_layer_idx = layer_idx
+        self.attn1._avic_attn_name = "attn1"
+        self.attn2._avic_layer_idx = layer_idx
+        self.attn2._avic_attn_name = "attn2"
+        
         # self.attn3 = Attention(hidden_size)
         # self.attn4 = Attention(hidden_size)
 

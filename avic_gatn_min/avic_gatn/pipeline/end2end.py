@@ -31,10 +31,10 @@ def run_end2end(cfg: Dict[str, Any]) -> Dict[str, Any]:
     steps_eval = int(cfg["data"]["steps_eval"])
 
     # === Baseline eval ===
-    base = adapter.evaluate(steps_eval)
+    base = adapter.evaluate_clean(steps_eval)
 
     # === Alg1: circuit discovery (head ablation) ===
-    topk = int(cfg["alg1"]["topk_circuits"])
+    topk = int(cfg["alg1"]["topk"])
     circuit_scores = discover_vulnerability_circuits(adapter, topk=topk, steps_eval=steps_eval)
 
     # === Alg2: circuit-aware PGD attack on node features ===

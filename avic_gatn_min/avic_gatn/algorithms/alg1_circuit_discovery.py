@@ -16,13 +16,13 @@ class CircuitScore:
 def discover_vulnerability_circuits(adapter: ToyGATNTaskAdapter, topk: int, steps_eval: int) -> List[CircuitScore]:
     # baseline
     adapter.set_ablation(None)
-    base = adapter.evaluate(steps_eval).primary
+    base = adapter.evaluate_clean(steps_eval).primary
 
     scores: List[CircuitScore] = []
     circuit = adapter.list_circuits()
     for c in circuit:
         adapter.set_ablation(c)
-        val = adapter.evaluate(steps_eval).primary
+        val = adapter.evaluate_clean(steps_eval).primary
         drop = base - val
         scores.append(CircuitScore(circuit=c, primary_drop=float(drop)))
     scores.sort(key=lambda x: x.primary_drop, reverse=True)

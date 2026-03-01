@@ -153,5 +153,6 @@ class AttentionBlock(nn.Module):
         #     y2, weights = self.attn4(y2)
         #     x2 = x2 + y2
 
-        x = torch.bmm(x1, x2)
+        #x = torch.bmm(x1, x2)
+        x = torch.bmm(x1, x2.transpose(1, 2))
         return x, weights

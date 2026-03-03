@@ -71,9 +71,9 @@ def pgd_attack_node_features(
 
     # clean baseline
     adapter.set_ablation(None)
-    clean_primary = adapter.evaluate(steps_eval).primary
+    clean_primary = adapter.evaluate_clean(steps_eval)
 
-    bsz = int(adapter.cfg["data"]["batch_size"])
+    bsz = int(adapter.cfg["gatn"]["batch_size"])
 
     adv_losses = []
 

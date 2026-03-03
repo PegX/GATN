@@ -313,3 +313,37 @@ class RealGATNTaskAdapter:
             self.controller.clear_ablation()
         else:
             self.controller.set_ablation(circuit)
+
+    def sample_batch(self):
+        """
+        Return one batch for attack/eval.
+
+        For real GATN:
+        - img_feat: images [B,3,H,W]
+        - node_feat: class embedding inp [80,D]
+        - A1/A2: None (model owns them)
+        - y: multi-hot labels [B,80]
+        """
+        import numpy as np
+
+        # 1) get inp (node features)
+        inp = None
+        for attr in ["inp", "inps", "embeddings"]:
+            if hasattr(self.val_ds, attr):
+                inp = getattr(self.val_ds, attr)
+                break
+        if inp is None:
+            raise RuntimeError("No 'inp' found in dataset.")
+
+        if isinstance(inp, np.ndarray):
+            inp = torch.from_numpy(inp)
+        if isinstance(inp, (list, tuple)):
+            inp = inp[0]
+        node_feat = inp.to(self.device).float()
+
+        # 2) get a batch (images, labels)
+        x, y = next(iter(self.val_loader))
+        img_feat = x.to(self.device)
+        y = y.to(self.device)
+
+        return img_feat, node_feat, None, None, y

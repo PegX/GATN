@@ -12,6 +12,20 @@ from torchvision import transforms
 from dataclasses import dataclass
 from typing import Dict, Any
 
+
+
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple, List
+
+from avic_gatn.core.controller import CircuitController
+from avic_gatn.core.circuits import CircuitID
+
+
+@dataclass
+class EvalResult:
+    primary: float
+    metrics: Dict[str, Any]
+
 @dataclass
 class EvalResult:
     primary: float
@@ -142,6 +156,8 @@ class RealGATNTaskAdapter:
 
         batch_size = self.cfg["gatn"]["batch_size"]
         workers = self.cfg["gatn"]["workers"]
+        self.val_ds = val_ds
+
         self.val_loader = DataLoader(
             val_ds,
             batch_size=batch_size,
@@ -208,7 +224,15 @@ class RealGATNTaskAdapter:
         if isinstance(batch, (list, tuple)):
             print("[BATCH LEN]", len(batch), "shapes:",
                 [getattr(x, "shape", None) for x in batch])
+            
 
+        # ---- AViC controller injection ----
+        self.controller = CircuitController()
+        blk = getattr(self.model, "transformerblock", None)
+        if blk is None:
+            raise AttributeError("Real GATN model has no attribute 'transformerblock'")
+        blk.attn1._avic_controller = self.controller
+        blk.attn2._avic_controller = self.controller
     # @torch.no_grad()
     # def evaluate_clean(self, steps_eval):
     #     crit = nn.MultiLabelSoftMarginLoss()
@@ -285,19 +309,23 @@ class RealGATNTaskAdapter:
             total_loss += loss.item() * bs
             n += bs
 
-        avg_loss = total_loss / max(n, 1)
+        # avg_loss = total_loss / max(n, 1)
 
-        metrics = {
-            "loss": float(avg_loss)
-        }
+        # metrics = {
+        #     "loss": float(avg_loss)
+        # }
 
-        # 因为 loss 越小越好，所以 primary 取负数（越大越好）
-        primary_value = -float(avg_loss)
+        # # 因为 loss 越小越好，所以 primary 取负数（越大越好）
+        # primary_value = -float(avg_loss)
         
-        return EvalResult(primary=primary_value, metrics=metrics)
+        # return EvalResult(primary=primary_value, metrics=metrics)
         #return {"primary": -avg, "loss": avg}
+        avg_loss = total_loss / max(n, 1)
+        metrics = {"loss": float(avg_loss)}
+        primary_value = -float(avg_loss)  # larger is better
+        return EvalResult(primary=primary_value, metrics=metrics)
   
-    def list_circuits(self):
+    def list_circuits0(self):
         blk = self.model.transformerblock
         # 动态取 head 数，避免写死 5
         H = blk.attn1.num_attention_heads
@@ -307,14 +335,14 @@ class RealGATNTaskAdapter:
                 circuits.append(CircuitID(layer=0, attn=attn_name, head=h))
         return circuits
 
-    def set_ablation(self, circuit):
+    def set_ablation0(self, circuit):
         # circuit=None 表示清除
         if circuit is None:
             self.controller.clear_ablation()
         else:
             self.controller.set_ablation(circuit)
 
-    def sample_batch(self):
+    def sample_batch0(self):
         """
         Return one batch for attack/eval.
 
@@ -347,3 +375,71 @@ class RealGATNTaskAdapter:
         y = y.to(self.device)
 
         return img_feat, node_feat, None, None, y
+    
+
+    def list_circuits(self) -> List[CircuitID]:
+        blk = self.model.transformerblock
+        H = getattr(blk.attn1, "num_attention_heads", None)
+        if H is None:
+            # fallback common names
+            H = getattr(blk.attn1, "num_heads", None)
+        if H is None:
+            raise AttributeError("Cannot find num_attention_heads/num_heads on Attention module")
+
+        circuits = []
+        for attn_name in ["attn1", "attn2"]:
+            for h in range(int(H)):
+                circuits.append(CircuitID(layer=0, attn=attn_name, head=h))
+        return circuits
+
+    def set_ablation(self, circuit: Optional[CircuitID]) -> None:
+        if circuit is None:
+            self.controller.clear_ablation()
+        else:
+            self.controller.set_ablation(circuit)
+
+    def get_last_cache(self) -> Dict[str, Any]:
+        return self.controller.get_cache()
+
+    def forward_with_cache(self, img, node_feat, A1=None, A2=None):
+        # clear cache each forward for clean trace
+        # but DO NOT clear ablation/focus flags
+        self.controller._cache = {}
+        return self.model(img, node_feat)
+
+    def sample_batch(self) -> Tuple[Any, Any, Any, Any, Any]:
+        """
+        Return: (img_feat, node_feat(inp), A1, A2, y)
+        Alg2 expects 5-tuple; for real GATN A1/A2 are internal, but we provide them for completeness.
++        """
+        import numpy as np
+        # node_feat (class embedding)
+        inp = None
+        for attr in ["inp", "inps", "embeddings"]:
+            if hasattr(self.val_ds, attr):
+                inp = getattr(self.val_ds, attr)
+                break
+        if inp is None:
+            raise RuntimeError("No 'inp' found in dataset object (coco.py).")
+        if isinstance(inp, np.ndarray):
+            inp = torch.from_numpy(inp)
+        if isinstance(inp, (list, tuple)):
+            inp = inp[0]
+        #node_feat = inp.to(self.device).float()
+        node_feat = inp.to(self.device).float()
+        # IMPORTANT: node_feat must be a tensor that PGD can perturb
+        # shape should match what model.forward expects (usually [80, D] or [1,80,D])
+
+        x, y = next(iter(self.val_loader))
+        img_feat = x.to(self.device)
+        y = y.to(self.device)
+
+        A1 = getattr(self.model, "A_1", None)
+        A2 = getattr(self.model, "A_2", None)
+        if A1 is not None:
+            A1 = A1.to(self.device)
+        if A2 is not None:
+            A2 = A2.to(self.device)
+
+        #return img_feat, node_feat, A1, A2, y
+        return img_feat, node_feat, A1, A2, y

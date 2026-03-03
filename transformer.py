@@ -82,21 +82,51 @@ class Attention(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.attention_head_size) # /sqrt(d) norm
         attention_probs = self.softmax(attention_scores) # softmax
 
-
+        # attn_weights = softmax(...)
 
         # ---------------- AViC hook #1: patch/cache attention weights ----------------
-        ctrl = getattr(self, "_avic_controller", None)
-        if ctrl is not None:
-            layer_idx = getattr(self, "_avic_layer_idx", -1)
-            attn_name = getattr(self, "_avic_attn_name", "attn")
-            attention_probs = ctrl.apply_on_attn(attention_probs, layer_idx, attn_name)
+        # ctrl = getattr(self, "_avic_controller", None)
+        # if ctrl is not None:
+        #     layer_idx = getattr(self, "_avic_layer_idx", -1)
+        #     attn_name = getattr(self, "_avic_attn_name", "attn")
+        #     attention_probs = ctrl.apply_on_attn(attention_probs, layer_idx, attn_name)
         # ---------------------------------------------------------------------------
 
         weights = attention_probs if self.vis else None
         attention_probs = self.attn_dropout(attention_probs)
 
+        controller = getattr(self, "_avic_controller", None)
+        layer_idx = getattr(self, "_avic_layer_idx", 0)
+        attn_name = getattr(self, "_avic_attn_name", "attn")
+        ctrl= controller
+        if controller is not None:
+            controller.put_cache(layer_idx, attn_name, attention_probs)
+
         context_layer = torch.matmul(attention_probs, value_layer) # W X V
 
+        
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        context_layer = context_layer.view(*new_context_layer_shape)
+        
+        controller = getattr(self, "_avic_controller", None)
+        layer_idx = getattr(self, "_avic_layer_idx", 0)
+        attn_name = getattr(self, "_avic_attn_name", "attn")
+        context = context_layer
+        ctrl = controller
+        if controller is not None and controller.ablation is not None:
+            # handle both layouts
+            if context.dim() == 4:
+                if context.shape[1] == self.num_attention_heads:
+                    # [B,H,N,D]
+                    for h in range(self.num_attention_heads):
+                        if controller.should_ablate(layer_idx, attn_name, h):
+                            context[:, h, :, :] = 0
+                elif context.shape[2] == self.num_attention_heads:
+                    # [B,N,H,D]
+                    for h in range(self.num_attention_heads):
+                        if controller.should_ablate(layer_idx, attn_name, h):
+                            context[:, :, h, :] = 0
         # ---------------- AViC hook #2: patch/cache per-head messages --------------
         if ctrl is not None:
             layer_idx = getattr(self, "_avic_layer_idx", -1)
@@ -104,9 +134,7 @@ class Attention(nn.Module):
             context_layer = ctrl.apply_on_head_out(context_layer, layer_idx, attn_name)
         # ---------------------------------------------------------------------------
 
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(*new_context_layer_shape)
+        
         attention_output = self.out(context_layer)
         attention_output = self.proj_dropout(attention_output)
         return attention_output, weights
@@ -128,6 +156,7 @@ class AttentionBlock(nn.Module):
         self.attn1._avic_attn_name = "attn1"
         self.attn2._avic_layer_idx = layer_idx
         self.attn2._avic_attn_name = "attn2"
+        
         
         # self.attn3 = Attention(hidden_size)
         # self.attn4 = Attention(hidden_size)

@@ -35,20 +35,30 @@ def run_end2end(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     # === Alg1: circuit discovery (head ablation) ===
     topk = int(cfg["alg1"]["topk"])
-    circuit_scores = discover_vulnerability_circuits(adapter, topk=topk, steps_eval=steps_eval)
+    C_star = circuit_scores = discover_vulnerability_circuits(adapter, topk=topk, steps_eval=steps_eval)
 
     # === Alg2: circuit-aware PGD attack on node features ===
-    a2 = cfg["alg2"]
+    a2 = alg2 = cfg["alg2"]
+    # attack = pgd_attack_node_features(
+    #     adapter,
+    #     circuits=[cs.circuit for cs in circuit_scores],
+    #     eps=float(a2["eps"]),
+    #     step_size=float(a2["step_size"]),
+    #     steps=int(a2["steps"]),
+    #     lam=float(a2["circuit_aware_lambda"]),
+    #     steps_eval=steps_eval,
+    #     mode=str(a2.get("circuit_aware_mode", "attn_kl")),
+    # )
     attack = pgd_attack_node_features(
-        adapter,
-        circuits=[cs.circuit for cs in circuit_scores],
-        eps=float(a2["eps"]),
-        step_size=float(a2["step_size"]),
-        steps=int(a2["steps"]),
-        lam=float(a2["circuit_aware_lambda"]),
-        steps_eval=steps_eval,
-        mode=str(a2.get("circuit_aware_mode", "attn_kl")),
-    )
+    adapter=adapter,
+    circuits=C_star,
+    eps=float(alg2.get("eps", 4/255)),
+    step_size=float(alg2.get("step_size", 1/255)),
+    steps=int(alg2.get("steps", 10)),
+    lam=float(alg2.get("lam", 0.1)),
+    steps_eval=int(cfg.get("data", {}).get("steps_eval", 5)),
+    mode=str(alg2.get("mode", "attn_kl")),
+)
 
     # === Minimal trace export ===
     # Run one clean+adv step to export attention snapshots

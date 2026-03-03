@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import List
 
 from avic_gatn.models.gatn_min import Circuit
-from avic_gatn.tasks.toy_task import ToyGATNTaskAdapter
+#from avic_gatn.tasks.toy_task import ToyGATNTaskAdapter
+from avic_gatn.tasks.adapter_api import AdapterAPI
 
 
 @dataclass
@@ -13,13 +14,17 @@ class CircuitScore:
     primary_drop: float
 
 
-def discover_vulnerability_circuits(adapter: ToyGATNTaskAdapter, topk: int, steps_eval: int) -> List[CircuitScore]:
+#def discover_vulnerability_circuits(adapter: ToyGATNTaskAdapter, topk: int, steps_eval: int) -> List[CircuitScore]:
+def discover_vulnerability_circuits(adapter: AdapterAPI, topk: int = 16, steps_eval: int = 5):
     # baseline
+    # adapter.set_ablation(None)
+    # base = adapter.evaluate_clean(steps_eval).primary
     adapter.set_ablation(None)
     base = adapter.evaluate_clean(steps_eval).primary
 
     scores: List[CircuitScore] = []
-    circuit = adapter.list_circuits()
+    #circuit = adapter.list_circuits()
+    circuits = adapter.list_circuits()
     for c in circuit:
         adapter.set_ablation(c)
         val = adapter.evaluate_clean(steps_eval).primary

@@ -2,12 +2,13 @@
 from dataclasses import dataclass
 from typing import Dict, Optional
 import torch
+from avic_gatn.core.circuits import CircuitID
 
-@dataclass(frozen=True)
-class CircuitID:
-    layer: int
-    attn: str   # e.g., "attn" / "attn1" / "attn2"
-    head: int
+# @dataclass(frozen=True)
+# class CircuitID:
+#     layer: int
+#     attn: str   # e.g., "attn" / "attn1" / "attn2"
+#     head: int
 
 @dataclass
 class CircuitPatch:

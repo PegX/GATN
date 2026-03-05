@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
-
-dataclass(frozen=True)
+@dataclass(frozen=True)
 class CircuitID:
     layer: int
-    attn: str   # "attn1" / "attn2"
+    attn: str
     head: int
 
     def key(self) -> str:

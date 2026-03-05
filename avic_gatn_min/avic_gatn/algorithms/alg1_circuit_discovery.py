@@ -25,7 +25,7 @@ def discover_vulnerability_circuits(adapter: AdapterAPI, topk: int = 16, steps_e
     scores: List[CircuitScore] = []
     #circuit = adapter.list_circuits()
     circuits = adapter.list_circuits()
-    for c in circuit:
+    for c in circuits:
         adapter.set_ablation(c)
         val = adapter.evaluate_clean(steps_eval).primary
         drop = base - val

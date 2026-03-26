@@ -141,6 +141,8 @@ class GATNResnet(nn.Module):
             adj = adj_h
         else:
             adj = self.A_out(adj_h)
+        adj = torch.nan_to_num(adj, nan=0.0, posinf=0.0, neginf=0.0)
+        adj = torch.relu(adj)
 
         # ✅ 20 -> 80（再投回 80 空间，保证后续逻辑仍然是 80×80）
         #adj = self.A_out(adj_h)   

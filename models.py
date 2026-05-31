@@ -88,15 +88,12 @@ class GATNResnet(nn.Module):
         A_Tensor1 = s_adj1.unsqueeze(-1)
 
 
-        #self.transformerblock = AttentionBlock(num_classes)# TransformerBlock()
-        num_classes=80
-        t_hidden=20
+        num_classes = 80
+        t_hidden = 20
         self.t_hidden = t_hidden
-        self.A_in  = nn.Linear(num_classes, self.t_hidden, bias=False)   # 80 -> 20
-        self.A_out = nn.Linear(self.t_hidden, num_classes, bias=False)   # 20 -> 80
+        self.A_in  = nn.Linear(num_classes, self.t_hidden, bias=False)
+        self.A_out = nn.Linear(self.t_hidden, num_classes, bias=False)
         self.transformerblock = AttentionBlock(self.t_hidden)
-        #self.t_hidden = t_hidden
-        #self.transformerblock = AttentionBlock(self.t_hidden)
 
         self.linear_A = nn.Linear(80, 80)
         self.A_1 = A_Tensor.permute(2,0,1)
@@ -114,6 +111,10 @@ class GATNResnet(nn.Module):
         feature = self.backbone(feature)
         feature = self.pooling(feature)
         feature = feature.view(feature.size(0), -1)
+        controller = getattr(self.transformerblock, "_avic_controller", None)
+        if controller is not None:
+            feature = controller.patch_tensor("layer0.image_feat", feature, select_dim=1)
+            controller.put_tensor("layer0.image_feat", feature)
         
         #inp = inp[0]
         # inp: expected shape [num_classes, embed_dim] (e.g., [80,300])
@@ -125,19 +126,20 @@ class GATNResnet(nn.Module):
         if isinstance(inp, np.ndarray):
             inp = torch.from_numpy(inp)
 
+        if torch.is_tensor(inp) and inp.dim() == 3:
+            inp = inp[0]
+
         # 保证 float32 + device 对齐
-        inp = inp.to(feature.device).float()
+        inp = inp.float().to(feature.device)
 
         # print("self.A_1",self.A_1.shape)
         #adj, _ = self.transformerblock(self.A_1.cuda(), self.A_2.cuda())
         A1 = self.A_1.to(feature.device)
         A2 = self.A_2.to(feature.device)
-        A1h = self.A_in(A1)                # [1,80,20]
-        A2h = self.A_in(A2)                # [1,80,20]
-
-        #adj_h, _ = self.transformerblock(A1h, A2h.transpose(1,2))   # 这里 LN 期望 20，OK
-        adj_h, _ = self.transformerblock(A1h, A2h)  # 输出可能是 [1,80,80] 或 [1,80,20]
-        if adj_h.shape[-1] == self.num_classes:     # 80
+        A1h = self.A_in(A1)
+        A2h = self.A_in(A2)
+        adj_h, _ = self.transformerblock(A1h, A2h)
+        if adj_h.shape[-1] == self.num_classes:
             adj = adj_h
         else:
             adj = self.A_out(adj_h)
@@ -155,12 +157,18 @@ class GATNResnet(nn.Module):
         adj = torch.squeeze(adj, 0)
         adj = adj + torch.eye(self.num_classes, device=adj.device, dtype=adj.dtype)
         adj = gen_adj(adj)
+        if controller is not None:
+            controller.put_tensor("layer0.norm_adj", adj)
 
         x = self.gc1(inp, adj)
         x = self.relu(x)
         x = self.gc2(x, adj)
+        if controller is not None:
+            controller.put_tensor("layer0.gc2_out", x)
         x = x.transpose(0, 1)
         x = torch.matmul(feature, x)
+        if controller is not None:
+            controller.put_tensor("layer0.logits", x)
 
         if not hasattr(self, "_printed"):
             print("[DEBUG] A1:", A1.shape, "A1h:", A1h.shape, "adj_h:", adj_h.shape, "adj:", adj.shape)
